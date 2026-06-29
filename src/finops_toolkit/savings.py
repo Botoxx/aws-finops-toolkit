@@ -47,8 +47,7 @@ def price_detection(d: Detection) -> Finding:
         high = p.get("savings_high_eur")
         extra_caveat = None
     else:
-        monthly = 0.0
-        extra_caveat = None
+        raise ValueError(f"no savings formula for check {check!r}")
 
     finding = d.priced(
         _r(monthly),

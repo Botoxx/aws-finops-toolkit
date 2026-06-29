@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Category(str, Enum):
@@ -14,6 +14,7 @@ class Category(str, Enum):
     networking = "networking"
     database = "database"
     commitment = "commitment"
+    other = "other"
 
 
 class Effort(str, Enum):
@@ -36,8 +37,9 @@ class Confidence(str, Enum):
 
 
 class Finding(BaseModel):
-    """One unit of detected waste. All money is computed in code on the customer's
-    amortized rate, net of existing commitment coverage."""
+    """One unit of detected waste. Every euro figure is computed in code: storage/networking on
+    public list price (never SP/RI-covered, so list price is the effective rate), and compute from
+    AWS Cost Explorer / Compute Optimizer's own currency estimates. The LLM computes nothing."""
 
     id: str = Field(description="Stable finding id, e.g. 'ebs-unattached-001'.")
     check: str = Field(description="Check slug, e.g. 'ebs-unattached'.")
@@ -64,6 +66,15 @@ class Finding(BaseModel):
     @classmethod
     def _round_money(cls, v: float | None) -> float | None:
         return None if v is None else round(v, 2)
+
+    @model_validator(mode="after")
+    def _bounds(self) -> "Finding":
+        lo, hi = self.savings_low_eur, self.savings_high_eur
+        if (lo is None) != (hi is None):
+            raise ValueError("savings bounds must be set as a pair (both or neither)")
+        if lo is not None and not (lo <= self.monthly_savings_eur <= hi):
+            raise ValueError("require savings_low_eur <= monthly_savings_eur <= savings_high_eur")
+        return self
 
     def allowed_figures(self) -> set[float]:
         """Euro figures the narrative is permitted to cite for this finding."""
