@@ -71,8 +71,9 @@ def audit(
         report = result.report
         if result.violations:
             console.print(
-                f"[yellow]Numeric gate still flagged {len(result.violations)} figure(s) after "
-                f"retries — they were excluded from the narrative.[/]"
+                f"[yellow]Numeric gate could not clear {len(result.violations)} figure(s) after "
+                f"retries — withholding the Claude narrative and writing the deterministic report "
+                f"instead.[/]"
             )
     elif narrative:
         console.print(

@@ -14,7 +14,7 @@ from .validate import Violation, validate_report
 
 
 class SecureReport(NamedTuple):
-    report: Report
+    report: Report | None  # None when the gate exhausted retries — narrative is withheld
     attempts: int
     violations: list[Violation]  # empty unless the gate exhausted its retries
 
@@ -32,6 +32,11 @@ def generate_secure_report(
     report, attempts, violations = generate_validated_report(
         redacted, client=client, max_attempts=max_attempts
     )
+
+    if violations:
+        # The gate could not clear every figure within max_attempts. Refuse to ship a narrative
+        # that still contains rejected figures — the caller falls back to the deterministic report.
+        return SecureReport(None, attempts, violations)
 
     if use_opus_summary:
         total = report.total_monthly_savings_eur

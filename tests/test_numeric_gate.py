@@ -52,6 +52,20 @@ def test_gate_flags_invented_total(findings):
     assert any(v.figure == 5000.0 for v in violations)
 
 
+def test_gate_flags_near_miss_outside_tolerance(findings):
+    # 47.0 is a real figure; €47.50 is close but distinct and must still be flagged (no wide band)
+    near = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves €47.50 per month.", action="a",
+    )
+    assert [v.figure for v in validate_report(_report(findings, recs=[near]), findings)] == [47.5]
+    exact = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves €47.00 per month.", action="a",
+    )
+    assert validate_report(_report(findings, recs=[exact]), findings) == []
+
+
 def test_ranged_savings_bounds_are_allowed(findings):
     # snapshot finding exposes low/high bounds; citing them must not trip the gate
     rec = Recommendation(
