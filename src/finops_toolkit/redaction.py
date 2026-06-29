@@ -15,6 +15,7 @@ from .schema import Finding, Recommendation, Report
 _PATTERNS: list[tuple[str, re.Pattern]] = [
     ("ARN", re.compile(r"arn:aws[a-z-]*:[^\s\"']+")),
     ("ACCT", re.compile(r"\b\d{12}\b")),
+    ("IP", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
     (
         "RES",
         re.compile(r"\b(?:vol|i|snap|ami|eipalloc|eni|nat|subnet|vpc)-[0-9a-f]{8,17}\b"),
@@ -31,6 +32,7 @@ class Redactor:
         self.tokens: dict[str, str] = {}  # token -> original
         self._rev: dict[str, str] = {}    # original -> token
         self._counter: dict[str, int] = defaultdict(int)
+        self._literals: set[str] = set()  # known secrets that match no pattern (bucket/LB names)
 
     def _token(self, kind: str, value: str) -> str:
         if value in self._rev:
@@ -41,7 +43,17 @@ class Redactor:
         self._rev[value] = tok
         return tok
 
+    def note_secret(self, value: str | None) -> None:
+        """Register a known-sensitive literal (a resource id/name) that the patterns may not match
+        — e.g. an S3 bucket name or load-balancer name. Redacted by exact substring thereafter."""
+        if value and value not in self._rev:
+            self._token("RES", value)
+            self._literals.add(value)
+
     def redact_text(self, text: str) -> str:
+        # Known literals first (longest first), so unmatched names are tokenised before patterns run.
+        for lit in sorted(self._literals, key=len, reverse=True):
+            text = text.replace(lit, self._rev[lit])
         for kind, pattern in _PATTERNS:
             text = pattern.sub(lambda m: self._token(kind, m.group(0)), text)
         return text
@@ -53,12 +65,28 @@ class Redactor:
         return text
 
     def redact_finding(self, f: Finding) -> Finding:
+        # Seed the finding's own identifiers as literals so names that match no pattern still go.
+        self.note_secret(f.resource_id)
+        self.note_secret(f.resource_arn)
         update = {field: self.redact_text(v) for field in _REDACTED_FIELDS if (v := getattr(f, field))}
         update["caveats"] = [self.redact_text(c) for c in f.caveats]
         return f.model_copy(update=update)
 
     def redact_findings(self, findings: list[Finding]) -> list[Finding]:
-        return [self.redact_finding(f) for f in findings]
+        redacted = [self.redact_finding(f) for f in findings]
+        self.assert_no_leak(findings, redacted)
+        return redacted
+
+    def assert_no_leak(self, originals: list[Finding], redacted: list[Finding]) -> None:
+        """Fail closed: redaction is best-effort regex, so verify no known identifier survived
+        rather than trusting the patterns to have matched everything."""
+        import json
+
+        blob = json.dumps([f.model_dump(mode="json") for f in redacted])
+        for f in originals:
+            for secret in (f.resource_id, f.resource_arn):
+                if secret and secret in blob:
+                    raise RuntimeError(f"redaction leak: {secret!r} survived into the API payload")
 
     def rehydrate_report(self, report: Report) -> Report:
         return report.model_copy(
