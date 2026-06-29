@@ -63,6 +63,19 @@ def test_commitment_silent_when_no_recommendation():
     assert commitment.collect(_FakeSession(ce), "eu-west-1", "111122223333") == []
 
 
+def test_commitment_advisory_on_ce_error():
+    # CE permission/throttle error must surface as a visible gap, not vanish as "no opportunity"
+    ce = _client("ce")
+    stub = Stubber(ce)
+    stub.add_client_error("get_savings_plans_purchase_recommendation", "AccessDeniedException")
+    stub.activate()
+    dets = commitment.collect(_FakeSession(ce), "eu-west-1", "111122223333")
+    assert len(dets) == 1
+    assert dets[0].check == "collector-error"
+    assert dets[0].pricing["monthly_savings_eur"] == 0.0
+    assert dets[0].confidence.value == "low"
+
+
 def test_rightsizing_reads_compute_optimizer_saving():
     co = _client("compute-optimizer", region="eu-west-1")
     stub = Stubber(co)

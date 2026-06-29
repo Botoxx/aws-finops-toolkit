@@ -7,7 +7,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from finops_toolkit.collectors import amis, ebs, networking, s3, snapshots
+from finops_toolkit.collectors import amis, commitment, ebs, networking, rightsizing, s3, snapshots
 
 REGION = "eu-west-1"
 READONLY_PREFIXES = ("Describe", "Get", "List", "BatchGet")
@@ -36,7 +36,9 @@ def test_collectors_issue_only_readonly_calls(session, monkeypatch):
     session._session.register("before-call", lambda model, **kw: calls.append(model.name))
 
     acct = "111122223333"
-    for mod in (ebs, networking, snapshots, amis, s3):
+    # include commitment + rightsizing: they hit CE / Compute Optimizer (mutating-capable services),
+    # so the read-only sweep must cover them too — they degrade to a Get + advisory under moto.
+    for mod in (ebs, networking, snapshots, amis, s3, commitment, rightsizing):
         mod.collect(session, REGION, acct)
 
     assert calls, "expected the collectors to make AWS calls"
