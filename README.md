@@ -70,5 +70,5 @@ terraform apply
 
 ---
 
-*Part of the [Apex Lab](https://github.com/Botoxx) cloud engineering portfolio.  
-Interested in a managed FinOps audit for your AWS account? [Get in touch.](https://linkedin.com/in/botond-geiszt-82b91b167)*
+*Part of the [Apex Lab](https://cloudgeist.cloud) cloud engineering portfolio — [github.com/Botoxx](https://github.com/Botoxx).  
+Interested in a managed FinOps audit for your AWS account? [Get a FinOps audit →](https://cloudgeist.cloud/finops-audit/)*
