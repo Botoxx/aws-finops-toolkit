@@ -97,5 +97,5 @@ Claude Haiku 4.5 handles cheap severity labelling. The numeric-validation gate a
 
 ---
 
-*Part of the [Apex Lab](https://cloudgeist.cloud) cloud engineering portfolio — [github.com/Botoxx](https://github.com/Botoxx).
+*Part of the [cloudgeist](https://cloudgeist.cloud) cloud engineering portfolio — [github.com/Botoxx](https://github.com/Botoxx).
 Interested in a managed FinOps audit for your AWS account? [Get a FinOps audit →](https://cloudgeist.cloud/finops-audit/)*
