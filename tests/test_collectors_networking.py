@@ -53,6 +53,15 @@ def test_active_nat_not_flagged_when_traffic_present(session, monkeypatch):
     assert nats == []
 
 
+def test_idle_not_flagged_when_metric_has_no_datapoints(session, monkeypatch):
+    # no datapoints (None) means "unknown", not "idle" — a busy resource must not be flagged
+    ec2 = session.client("ec2", region_name=REGION)
+    _make_nat(ec2)
+    monkeypatch.setattr(networking, "metric_sum", lambda *a, **k: None)
+    nats = [d for d in networking.collect(session, REGION, "111122223333") if d.check == "nat-idle"]
+    assert nats == []
+
+
 def test_idle_alb_flagged_when_no_requests(session, monkeypatch):
     ec2 = session.client("ec2", region_name=REGION)
     elb = session.client("elbv2", region_name=REGION)
