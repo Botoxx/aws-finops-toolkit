@@ -78,14 +78,18 @@ class Redactor:
         return redacted
 
     def assert_no_leak(self, originals: list[Finding], redacted: list[Finding]) -> None:
-        """Fail closed: redaction is best-effort regex, so verify no known identifier survived
-        rather than trusting the patterns to have matched everything."""
-        import json
-
-        blob = json.dumps([f.model_dump(mode="json") for f in redacted])
+        """Fail closed: verify no finding's resource_id/resource_arn survived into a field that gets
+        sent to the model. Scanned over the redacted text fields only — structural fields (service,
+        region, check, enums) are never redacted and may legitimately share a substring with a short
+        id (e.g. a bucket named 'ec2' vs service 'ec2'), so including them would false-positive."""
+        shipped = "\n".join(
+            text
+            for f in redacted
+            for text in (*(getattr(f, fld) or "" for fld in _REDACTED_FIELDS), *f.caveats)
+        )
         for f in originals:
             for secret in (f.resource_id, f.resource_arn):
-                if secret and secret in blob:
+                if secret and secret in shipped:
                     raise RuntimeError(f"redaction leak: {secret!r} survived into the API payload")
 
     def rehydrate_report(self, report: Report) -> Report:

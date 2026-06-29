@@ -1,7 +1,42 @@
 import json
 
+import pytest
+
 from finops_toolkit.redaction import Redactor
 from finops_toolkit.schema import Finding, Recommendation, Report
+
+
+def _finding(**kw) -> Finding:
+    base = dict(
+        id="x", check="c", service="ec2", category="storage", title="t",
+        resource_id="r", region="eu-west-1", evidence="e", monthly_savings_eur=0.0,
+        effort="trivial", risk="safe", confidence="high", confidence_reason="c",
+    )
+    base.update(kw)
+    return Finding(**base)
+
+
+def test_assert_no_leak_does_not_false_positive_on_short_ids():
+    # a bucket named 'ec2'/'elastic' is a substring of service/region/enum values that are never
+    # redacted — the leak check must not abort the run on those benign structural collisions
+    r = Redactor()
+    findings = [
+        _finding(id="s3-ec2", resource_id="ec2", service="s3", title="bucket ec2", evidence="bucket ec2"),
+        _finding(id="elb-elastic", resource_id="elastic", service="elasticloadbalancing",
+                 title="lb elastic", evidence="lb elastic idle"),
+    ]
+    redacted = r.redact_findings(findings)  # must not raise
+    blob = json.dumps([f.model_dump(mode="json") for f in redacted])
+    assert '"resource_id": "ec2"' not in blob and '"resource_id": "elastic"' not in blob
+
+
+def test_assert_no_leak_raises_when_a_secret_survives():
+    r = Redactor()
+    secret = "arn:aws:ec2:eu-west-1:111122223333:volume/vol-0a1b2c3d4e5f60011"
+    originals = [_finding(resource_arn=secret)]
+    unredacted = [_finding(resource_arn=secret, evidence=f"delete {secret}")]  # not actually redacted
+    with pytest.raises(RuntimeError, match="redaction leak"):
+        r.assert_no_leak(originals, unredacted)
 
 
 def test_redaction_removes_secrets_from_serialized_findings(findings):
