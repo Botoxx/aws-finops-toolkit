@@ -44,8 +44,9 @@ read-only scan (boto3)  →  deterministic findings[]  →  savings math (code) 
 ## Output
 
 1. **`findings.json`** — machine-readable, the typed contract every figure flows through.
-2. **`report.md`** — prioritized (safe quick wins first), with per-finding savings, caveats, and
-   an optional Claude-generated executive summary + recommendations.
+2. **`report.md`** — prioritized (safe quick wins first), with per-finding savings where
+   quantifiable (some checks, e.g. incomplete-MPU, are detect-only), caveats, and an optional
+   Claude-generated executive summary + recommendations.
 
 ## Usage
 

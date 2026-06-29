@@ -143,7 +143,7 @@
     "effort": "medium",
     "risk": "safe",
     "confidence": "high",
-    "confidence_reason": "Coverage gap from CE; range reflects 1yr no-upfront vs 3yr partial commitment tiers.",
+    "confidence_reason": "Coverage gap from CE; bounds are a heuristic band around CE's point estimate, not a tier comparison.",
     "auto_applyable": false,
     "caveats": ["Assumes steady-state usage continues; commit only to the durable baseline."]
   }

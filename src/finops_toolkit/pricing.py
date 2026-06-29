@@ -14,7 +14,7 @@ from __future__ import annotations
 
 HOURS_PER_MONTH = 730
 
-# $/GB-month by EBS volume type (eu-west-1 list).
+# €/GB-month by EBS volume type (eu-west-1 list; USD list price treated 1:1 as EUR — indicative).
 EBS_GB_MONTH: dict[str, float] = {
     "gp2": 0.116,
     "gp3": 0.0928,
@@ -24,7 +24,7 @@ EBS_GB_MONTH: dict[str, float] = {
     "sc1": 0.018,
     "standard": 0.058,
 }
-SNAPSHOT_GB_MONTH = 0.05  # EBS snapshot standard tier, $/GB-month
+SNAPSHOT_GB_MONTH = 0.05  # EBS snapshot standard tier, €/GB-month
 
 # Flat hourly charges.
 EIP_IDLE_HOUR = 0.005          # unassociated / extra public IPv4
