@@ -36,3 +36,16 @@ def test_audit_prices_and_prioritizes(session):
     # (commitment yields nothing; rightsizing yields an advisory)
     checks = {f.check for f in findings}
     assert "rightsizing" in checks
+
+
+def test_collector_exception_becomes_visible_gap(session, monkeypatch):
+    # a collector raising must degrade to a collector-error gap, never abort the whole audit
+    def boom(s, r, a):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(engine, "_REGIONAL", (boom,))
+    monkeypatch.setattr(engine, "_GLOBAL", ())
+    dets = engine.collect_detections(session, [REGION], "111122223333")
+    gaps = [d for d in dets if d.check == "collector-error"]
+    assert len(gaps) == 1
+    assert gaps[0].pricing["monthly_savings_eur"] == 0.0

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Category(str, Enum):
@@ -40,6 +40,8 @@ class Finding(BaseModel):
     """One unit of detected waste. Every euro figure is computed in code: storage/networking on
     public list price (never SP/RI-covered, so list price is the effective rate), and compute from
     AWS Cost Explorer / Compute Optimizer's own currency estimates. The LLM computes nothing."""
+
+    model_config = ConfigDict(validate_assignment=True)  # re-run _bounds on post-construction sets
 
     id: str = Field(description="Stable finding id, e.g. 'ebs-unattached-001'.")
     check: str = Field(description="Check slug, e.g. 'ebs-unattached'.")

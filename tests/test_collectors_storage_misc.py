@@ -50,3 +50,21 @@ def test_incomplete_mpu_flagged(session):
     assert len(match) == 1
     assert match[0].pricing["upload_count"] == 1
     assert match[0].auto_applyable is True
+
+
+def test_inaccessible_bucket_becomes_gap_and_scan_continues(session, monkeypatch):
+    s3c = session.client("s3", region_name=REGION)
+    for name in ("denied-bucket", "ok-bucket"):
+        s3c.create_bucket(Bucket=name, CreateBucketConfiguration={"LocationConstraint": REGION})
+    s3c.create_multipart_upload(Bucket="ok-bucket", Key="big.parquet")
+
+    real = s3._bucket_region
+    monkeypatch.setattr(
+        s3, "_bucket_region",
+        lambda client, bucket: (_ for _ in ()).throw(Exception("AccessDenied"))
+        if bucket == "denied-bucket" else real(client, bucket),
+    )
+    dets = s3.collect(session, REGION, "111122223333")
+    gap = [d for d in dets if d.id == "s3-inaccessible-denied-bucket"]
+    assert len(gap) == 1 and gap[0].check == "collector-error"
+    assert any(d.resource_id == "ok-bucket" and d.check == "s3-incomplete-mpu" for d in dets)
