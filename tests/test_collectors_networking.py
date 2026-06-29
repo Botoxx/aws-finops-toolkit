@@ -53,13 +53,20 @@ def test_active_nat_not_flagged_when_traffic_present(session, monkeypatch):
     assert nats == []
 
 
-def test_idle_not_flagged_when_metric_has_no_datapoints(session, monkeypatch):
-    # no datapoints (None) means "unknown", not "idle" — a busy resource must not be flagged
-    ec2 = session.client("ec2", region_name=REGION)
-    _make_nat(ec2)
-    monkeypatch.setattr(networking, "metric_sum", lambda *a, **k: None)
-    nats = [d for d in networking.collect(session, REGION, "111122223333") if d.check == "nat-idle"]
-    assert nats == []
+def test_metric_sum_is_zero_when_no_datapoints():
+    # a successful query with no datapoints means 'no activity' (e.g. ALB RequestCount on zero
+    # requests) — it must read as 0.0 (idle), not be suppressed. Failures raise instead.
+    from finops_toolkit.collectors.metrics import metric_sum
+
+    class _CW:
+        def get_metric_statistics(self, **k):
+            return {"Datapoints": []}
+
+    class _Session:
+        def client(self, *a, **k):
+            return _CW()
+
+    assert metric_sum(_Session(), REGION, "AWS/ApplicationELB", "RequestCount", []) == 0.0
 
 
 def test_idle_alb_flagged_when_no_requests(session, monkeypatch):

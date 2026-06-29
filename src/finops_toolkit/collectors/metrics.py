@@ -16,10 +16,11 @@ def metric_sum(
     dimensions: list[dict],
     days: int = 30,
     period: int = 86400,
-) -> float | None:
-    """Total of a metric over the trailing `days`, or None if CloudWatch returned no datapoints.
-    None means 'unknown' (query failed / metric absent), NOT 'zero' — callers must not read the
-    absence of data as idle, or a busy resource with a missing metric gets flagged for deletion."""
+) -> float:
+    """Total of a metric over the trailing `days`. Returns 0.0 when CloudWatch reports no datapoints.
+    A failed query (throttle / AccessDenied) raises and is surfaced as a collector gap upstream, so a
+    successful empty result means 'no activity' — e.g. ALB RequestCount emits nothing on zero
+    requests, which is exactly the idle signal we want to flag."""
     cw = session.client("cloudwatch", region_name=region)
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
@@ -32,5 +33,4 @@ def metric_sum(
         Period=period,
         Statistics=["Sum"],
     )
-    points = resp.get("Datapoints", [])
-    return sum(p["Sum"] for p in points) if points else None
+    return sum(p["Sum"] for p in resp.get("Datapoints", []))

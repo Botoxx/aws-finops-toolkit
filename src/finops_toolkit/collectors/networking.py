@@ -50,7 +50,7 @@ def _nat_gateways(session: boto3.Session, region: str, days: int) -> list[Detect
                 session, region, "AWS/NATGateway", "BytesOutToDestination",
                 [{"Name": "NatGatewayId", "Value": nat_id}], days=days,
             )
-            if traffic is None or traffic > 0:  # None = no data → inconclusive, do not flag idle
+            if traffic > 0:
                 continue
             out.append(
                 Detection(
@@ -92,7 +92,7 @@ def _load_balancers(session: boto3.Session, region: str, days: int) -> list[Dete
                 session, region, namespace, metric,
                 [{"Name": "LoadBalancer", "Value": dim}], days=days,
             )
-            if requests is None or requests > 0:  # None = no data → inconclusive, do not flag idle
+            if requests > 0:
                 continue
             out.append(
                 Detection(
