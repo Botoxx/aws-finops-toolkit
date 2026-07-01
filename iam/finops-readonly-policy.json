@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InventoryRead",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "elasticloadbalancing:Describe*",
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads",
+        "cloudwatch:GetMetricStatistics",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CostAndOptimizationRead",
+      "Effect": "Allow",
+      "Action": [
+        "ce:Get*",
+        "compute-optimizer:Get*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyAllMutationHardGuarantee",
+      "Effect": "Deny",
+      "NotAction": [
+        "ec2:Describe*",
+        "elasticloadbalancing:Describe*",
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads",
+        "cloudwatch:GetMetricStatistics",
+        "sts:GetCallerIdentity",
+        "ce:Get*",
+        "compute-optimizer:Get*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

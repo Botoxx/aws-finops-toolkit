@@ -1,0 +1,127 @@
+from finops_toolkit.llm.validate import (
+    extract_currency_figures,
+    extract_foreign_figures,
+    validate_report,
+)
+from finops_toolkit.schema import Recommendation, Report
+
+
+def _report(findings, summary="", recs=None):
+    return Report(
+        executive_summary=summary,
+        total_monthly_savings_eur=round(sum(f.monthly_savings_eur for f in findings), 2),
+        recommendations=recs or [],
+    )
+
+
+def test_extract_handles_currency_formats():
+    # euro figures (symbol, suffix, EUR code, word form) are extracted; the $ figure is not a euro
+    text = "We found €47, then 18.40€, plus EUR 410.00, 47 euros, and a total of €1,840.50 ($16.20 too)."
+    assert extract_currency_figures(text) == [47.0, 18.4, 410.0, 47.0, 1840.5]
+    assert extract_foreign_figures(text) == [16.2]
+
+
+def test_extract_ignores_non_currency_numbers():
+    text = "3 volumes, 500 GB, idle for 47 days across 2 regions."
+    assert extract_currency_figures(text) == []
+
+
+def test_extract_catches_no_space_currency_codes():
+    # no-space ISO-code forms must not slip the gate; "USDA" (no adjacent digit) must not false-match
+    assert extract_currency_figures("a 9999EUR estimate and EUR5 too") == [9999.0, 5.0]
+    assert extract_foreign_figures("5000USD and $12") == [5000.0, 12.0]
+    assert extract_currency_figures("the USDA report on 5 farms") == []
+    assert extract_foreign_figures("the USDA report on 5 farms") == []
+
+
+def test_parse_handles_us_and_european_grouping():
+    # rightmost separator is the decimal — €1.234,56 is 1234.56, not 1.23
+    assert extract_currency_figures("€1.234,56") == [1234.56]
+    assert extract_currency_figures("€1,234.56") == [1234.56]
+    assert extract_currency_figures("47,50 euros") == [47.5]
+    assert extract_foreign_figures("$1.234,56") == [1234.56]
+
+
+def test_gate_passes_on_clean_report(findings):
+    total = round(sum(f.monthly_savings_eur for f in findings), 2)
+    rec = Recommendation(
+        finding_id="ebs-unattached-001",
+        headline="Delete an unattached volume",
+        rationale="The volume saves €47 per month and has been idle 47 days.",
+        action="Snapshot, then delete vol-0a1b2c3d4e5f60011.",
+    )
+    report = _report(findings, summary=f"Total addressable waste is €{total:.2f}/month.", recs=[rec])
+    assert validate_report(report, findings) == []
+
+
+def test_gate_flags_hallucinated_figure(findings):
+    rec = Recommendation(
+        finding_id="ebs-unattached-001",
+        headline="Delete an unattached volume",
+        rationale="This will save you €999 per month.",  # not in findings
+        action="Delete it.",
+    )
+    report = _report(findings, recs=[rec])
+    violations = validate_report(report, findings)
+    assert len(violations) == 1
+    assert violations[0].figure == 999.0
+
+
+def test_gate_flags_invented_total(findings):
+    report = _report(findings, summary="You will save €5,000/month overall.")
+    report.total_monthly_savings_eur = round(sum(f.monthly_savings_eur for f in findings), 2)
+    violations = validate_report(report, findings)
+    assert any(v.figure == 5000.0 for v in violations)
+
+
+def test_gate_flags_near_miss_outside_tolerance(findings):
+    # 47.0 is a real figure; €47.50 is close but distinct and must still be flagged (no wide band)
+    near = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves €47.50 per month.", action="a",
+    )
+    assert [v.figure for v in validate_report(_report(findings, recs=[near]), findings)] == [47.5]
+    exact = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves €47.00 per month.", action="a",
+    )
+    assert validate_report(_report(findings, recs=[exact]), findings) == []
+
+
+def test_gate_rejects_foreign_currency_even_when_value_is_real(findings):
+    # $47 borrows a real euro value but the report is EUR-only — wrong currency is always a violation
+    rec = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves $47 per month.", action="a",
+    )
+    assert [v.figure for v in validate_report(_report(findings, recs=[rec]), findings)] == [47.0]
+
+
+def test_gate_flags_word_form_hallucination(findings):
+    # a fabricated figure written in words ("999 euros") must be caught, not just "€999"
+    rec = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves 999 euros per month.", action="a",
+    )
+    assert [v.figure for v in validate_report(_report(findings, recs=[rec]), findings)] == [999.0]
+
+
+def test_gate_flags_dangling_finding_id(findings):
+    # a recommendation citing only real figures but bound to a non-existent finding is still rejected
+    rec = Recommendation(
+        finding_id="does-not-exist", headline="h", rationale="This saves €47 per month.", action="a",
+    )
+    violations = validate_report(_report(findings, recs=[rec]), findings)
+    assert any("does-not-exist" in v.snippet for v in violations)
+
+
+def test_ranged_savings_bounds_are_allowed(findings):
+    # snapshot finding exposes low/high bounds; citing them must not trip the gate
+    rec = Recommendation(
+        finding_id="snapshot-orphan-001",
+        headline="Clean up orphaned snapshots",
+        rationale="Realistic saving is between €12 and €32 per month.",
+        action="Review then delete the 7 orphaned snapshots.",
+    )
+    report = _report(findings, recs=[rec])
+    assert validate_report(report, findings) == []
