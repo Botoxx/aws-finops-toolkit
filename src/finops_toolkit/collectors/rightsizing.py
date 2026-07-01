@@ -75,7 +75,9 @@ def collect(session: boto3.Session, region: str, account_id: str) -> list[Detect
 
     recs = resp.get("instanceRecommendations", [])
     if not recs:
-        return [_not_enabled(region, account_id)]
+        # A successful call with no recommendations means Compute Optimizer IS enabled (not-opted-in
+        # raises and is handled above) but has nothing yet — warming up or no eligible instances.
+        return [_no_actionable(region, account_id)]
 
     out: list[Detection] = []
     for rec in recs:

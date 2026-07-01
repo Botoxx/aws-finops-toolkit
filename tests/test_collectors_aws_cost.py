@@ -133,16 +133,28 @@ def test_rightsizing_reads_compute_optimizer_saving():
     assert over[0].confidence.value == "high"
 
 
-def test_rightsizing_advisory_when_not_opted_in():
+def test_rightsizing_not_enabled_on_opt_in_error():
+    # a genuine not-opted-in / no-permission error is the only "enable Compute Optimizer" case
+    co = _client("compute-optimizer", region="eu-west-1")
+    stub = Stubber(co)
+    stub.add_client_error("get_ec2_instance_recommendations", "OptInRequiredException")
+    stub.activate()
+    dets = rightsizing.collect(_FakeSession(co), "eu-west-1", "111122223333")
+    assert len(dets) == 1
+    assert dets[0].id == "rightsizing-enable-compute-optimizer"
+    assert dets[0].confidence.value == "low"
+
+
+def test_rightsizing_no_actionable_when_enabled_but_empty():
+    # a successful empty response means enabled-but-warming-up; must NOT tell the user to enable it
     co = _client("compute-optimizer", region="eu-west-1")
     stub = Stubber(co)
     stub.add_response("get_ec2_instance_recommendations", {"instanceRecommendations": []})
     stub.activate()
     dets = rightsizing.collect(_FakeSession(co), "eu-west-1", "111122223333")
     assert len(dets) == 1
-    assert dets[0].id == "rightsizing-enable-compute-optimizer"
+    assert dets[0].id == "rightsizing-none-actionable"
     assert dets[0].pricing["monthly_savings_eur"] == 0.0
-    assert dets[0].confidence.value == "low"
 
 
 def test_rightsizing_distinguishes_enabled_but_no_actionable():
