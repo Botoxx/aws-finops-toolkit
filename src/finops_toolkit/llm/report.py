@@ -22,6 +22,8 @@ You receive findings as JSON; each finding carries a code-computed euro saving.
 HARD RULES:
 - You may ONLY state euro figures that appear verbatim in the findings data or in the provided
   total_monthly_savings_eur. NEVER compute, sum, average, round, or invent a euro amount.
+- Write every euro figure with a leading € and no thousands separators (e.g. €47.00, €1840.50).
+  Never state a euro amount as a bare number, and never use $ or any non-euro currency.
 - To state an overall total, use the provided total_monthly_savings_eur and nothing else.
 - Every recommendation must set finding_id to a real finding id.
 - Order recommendations by impact and ease: safe, high-confidence quick wins first; large or

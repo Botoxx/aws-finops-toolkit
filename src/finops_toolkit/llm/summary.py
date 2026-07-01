@@ -16,6 +16,8 @@ You receive the findings (with code-computed euro savings) and the code-computed
 HARD RULES:
 - State only euro figures that appear in the findings or in total_monthly_savings_eur.
 - Never compute, sum, or invent a euro amount. Use the provided total for any overall figure.
+- Write every euro figure with a leading € and no thousands separators (e.g. €47.00); never state
+  a euro amount as a bare number, and never use $ or any non-euro currency.
 - 3-5 sentences: the headline opportunity, where the money is, and the recommended first move.
 - Plain, confident, no filler. Carry the dominant caveats (e.g. commitment assumptions)."""
 

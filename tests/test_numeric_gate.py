@@ -26,6 +26,22 @@ def test_extract_ignores_non_currency_numbers():
     assert extract_currency_figures(text) == []
 
 
+def test_extract_catches_no_space_currency_codes():
+    # no-space ISO-code forms must not slip the gate; "USDA" (no adjacent digit) must not false-match
+    assert extract_currency_figures("a 9999EUR estimate and EUR5 too") == [9999.0, 5.0]
+    assert extract_foreign_figures("5000USD and $12") == [5000.0, 12.0]
+    assert extract_currency_figures("the USDA report on 5 farms") == []
+    assert extract_foreign_figures("the USDA report on 5 farms") == []
+
+
+def test_parse_handles_us_and_european_grouping():
+    # rightmost separator is the decimal — €1.234,56 is 1234.56, not 1.23
+    assert extract_currency_figures("€1.234,56") == [1234.56]
+    assert extract_currency_figures("€1,234.56") == [1234.56]
+    assert extract_currency_figures("47,50 euros") == [47.5]
+    assert extract_foreign_figures("$1.234,56") == [1234.56]
+
+
 def test_gate_passes_on_clean_report(findings):
     total = round(sum(f.monthly_savings_eur for f in findings), 2)
     rec = Recommendation(

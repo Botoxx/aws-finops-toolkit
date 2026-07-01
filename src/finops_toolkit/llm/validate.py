@@ -14,11 +14,14 @@ from ..schema import Finding, Report
 # any foreign-currency figure ($/USD/dollar(s)) is a violation regardless of value, because a
 # EUR report should never state one and its number is compared in the same space as euros.
 # Residual limitation: a fabricated bare number with NO currency marker ("saves 999 monthly") is
-# not caught here — the system prompts require a currency marker on every euro figure, so this is
-# a prompt-bounded, documented gap, not a silent one. Commas = thousands separators.
-_AMOUNT = r"(\d[\d,]*(?:\.\d+)?)"
-_EUR = r"(?:€|\bEUR\b|\beuros?\b)"
-_FOREIGN = r"(?:\$|\bUSD\b|\bdollars?\b)"
+# not caught here — the system prompts require a leading € on every euro figure, so this is a
+# prompt-bounded, documented gap, not a silent one.
+# The currency code is bounded by (?<![A-Za-z])…(?![A-Za-z]) rather than \b, so no-space forms
+# like "5EUR" / "9999EUR" still match while "USDA" does not; _parse handles both US (1,840.50)
+# and European (1.840,56) grouping.
+_AMOUNT = r"(\d[\d.,]*)"
+_EUR = r"(?<![A-Za-z])(?:€|EUR|euros?)(?![A-Za-z])"
+_FOREIGN = r"(?<![A-Za-z])(?:\$|USD|dollars?)(?![A-Za-z])"
 _EUR_RE = re.compile(rf"{_EUR}\s?{_AMOUNT}|{_AMOUNT}\s?{_EUR}", re.IGNORECASE)
 _FOREIGN_RE = re.compile(rf"{_FOREIGN}\s?{_AMOUNT}|{_AMOUNT}\s?{_FOREIGN}", re.IGNORECASE)
 
@@ -29,7 +32,13 @@ class Violation(NamedTuple):
 
 
 def _parse(num: str) -> float:
-    return round(float(num.replace(",", "")), 2)
+    num = num.strip(".,")
+    if "." in num and "," in num:
+        dec = max(num.rfind("."), num.rfind(","))  # rightmost separator is the decimal point
+        return round(float(re.sub(r"[.,]", "", num[:dec]) + "." + num[dec + 1:]), 2)
+    if num.count(",") == 1 and 1 <= len(num.rsplit(",", 1)[1]) <= 2:
+        return round(float(num.replace(",", ".")), 2)  # European decimal comma, e.g. 47,50
+    return round(float(num.replace(",", "")), 2)  # commas are thousands separators (or none)
 
 
 def _figures(pattern: re.Pattern, text: str) -> list[float]:
