@@ -67,4 +67,6 @@ def validate_report(
                 violations.append(Violation(fig, snippet))
         for fig in extract_foreign_figures(text):
             violations.append(Violation(fig, snippet))  # foreign currency: always a violation
+    for bad_id in report.unknown_finding_ids(findings):
+        violations.append(Violation(0.0, f"recommendation references unknown finding_id {bad_id!r}"))
     return violations

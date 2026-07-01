@@ -143,3 +143,9 @@ class Report(BaseModel):
         for f in findings:
             figs |= f.allowed_figures()
         return figs
+
+    def unknown_finding_ids(self, findings: list[Finding]) -> list[str]:
+        """Recommendation.finding_id values that don't resolve to a real finding — a dangling
+        reference the numeric gate would otherwise miss (correct figure, wrong/absent resource)."""
+        known = {f.id for f in findings}
+        return [r.finding_id for r in self.recommendations if r.finding_id not in known]
