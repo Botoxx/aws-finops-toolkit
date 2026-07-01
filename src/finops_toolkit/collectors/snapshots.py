@@ -1,5 +1,5 @@
 """Orphaned EBS snapshots: self-owned snapshots whose source volume no longer exists.
-Read-only: describe_snapshots + describe_volumes. Savings are ranged in Phase 2 because
+Read-only: describe_snapshots + describe_volumes. Savings are ranged (see savings.py) because
 incremental snapshots free far less than nominal size."""
 
 from __future__ import annotations

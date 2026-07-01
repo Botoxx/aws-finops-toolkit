@@ -7,15 +7,10 @@
       "Action": [
         "ec2:Describe*",
         "elasticloadbalancing:Describe*",
-        "rds:Describe*",
         "s3:ListAllMyBuckets",
         "s3:GetBucketLocation",
         "s3:ListBucketMultipartUploads",
-        "s3:GetLifecycleConfiguration",
-        "cloudwatch:GetMetricData",
         "cloudwatch:GetMetricStatistics",
-        "cloudwatch:ListMetrics",
-        "tag:GetResources",
         "sts:GetCallerIdentity"
       ],
       "Resource": "*"
@@ -25,15 +20,7 @@
       "Effect": "Allow",
       "Action": [
         "ce:Get*",
-        "ce:Describe*",
-        "ce:List*",
-        "compute-optimizer:Get*",
-        "compute-optimizer:Describe*",
-        "savingsplans:Describe*",
-        "savingsplans:List*",
-        "pricing:GetProducts",
-        "pricing:DescribeServices",
-        "pricing:GetAttributeValues"
+        "compute-optimizer:Get*"
       ],
       "Resource": "*"
     },
@@ -43,26 +30,13 @@
       "NotAction": [
         "ec2:Describe*",
         "elasticloadbalancing:Describe*",
-        "rds:Describe*",
         "s3:ListAllMyBuckets",
         "s3:GetBucketLocation",
         "s3:ListBucketMultipartUploads",
-        "s3:GetLifecycleConfiguration",
-        "cloudwatch:GetMetricData",
         "cloudwatch:GetMetricStatistics",
-        "cloudwatch:ListMetrics",
-        "tag:GetResources",
         "sts:GetCallerIdentity",
         "ce:Get*",
-        "ce:Describe*",
-        "ce:List*",
-        "compute-optimizer:Get*",
-        "compute-optimizer:Describe*",
-        "savingsplans:Describe*",
-        "savingsplans:List*",
-        "pricing:GetProducts",
-        "pricing:DescribeServices",
-        "pricing:GetAttributeValues"
+        "compute-optimizer:Get*"
       ],
       "Resource": "*"
     }

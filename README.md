@@ -33,11 +33,11 @@ read-only scan (boto3)  →  deterministic findings[]  →  savings math (code) 
 | 2 | gp2 → gp3 migration opportunity | `describe-volumes` | high |
 | 3 | Unassociated Elastic IPs | `describe-addresses` | high |
 | 4 | EBS volumes on stopped instances | `describe-volumes` + instances | high |
-| 5 | Orphaned snapshots (source gone) | `describe-snapshots` | high detect / ranged € |
+| 5 | Orphaned snapshots (source gone) | `describe-snapshots` | medium (detect deterministic, € ranged) |
 | 6 | Unused AMIs (+ backing snapshots) | `describe-images` | high |
-| 7 | S3 incomplete multipart uploads | `list-multipart-uploads` | high detect |
-| 8 | Idle NAT gateways | CloudWatch `BytesOutToDestination` | med-high |
-| 9 | Idle load balancers | CloudWatch | med-high |
+| 7 | S3 incomplete multipart uploads | `list-multipart-uploads` | medium (detect only) |
+| 8 | Idle NAT gateways | CloudWatch `BytesOutToDestination` | medium |
+| 9 | Idle load balancers | CloudWatch `RequestCount`/`ProcessedBytes` | medium |
 | 10 | Savings Plans / RI coverage gap | Cost Explorer | high (AWS-sourced) |
 | 11 | EC2 rightsizing | Compute Optimizer | high (AWS-sourced) |
 
@@ -57,10 +57,11 @@ uv sync            # or: pip install -e .
 # read-only credentials — least-privilege policy provided in iam/
 export AWS_PROFILE=finops-readonly
 
-# run the audit (no resources are modified)
+# run the audit (single command, no resources are modified) — writes findings.json + report.md
 finops-toolkit audit --region eu-west-1 --out-dir ./out
 
-# add the Claude narrative (bring your own key)
+# the same command adds a Claude-written narrative to report.md when a key is set
+# (no key → the deterministic report is still written; --no-narrative skips it explicitly)
 export ANTHROPIC_API_KEY=sk-ant-...
 finops-toolkit audit --region eu-west-1 --out-dir ./out
 ```
@@ -74,10 +75,13 @@ finops-toolkit audit --role-arn arn:aws:iam::ACCOUNT:role/finops-readonly \
 
 ## Required IAM permissions
 
-A least-privilege, read-only policy is in `iam/finops-readonly-policy.json`. It allows only
-describe/get/list across the services scanned, plus Cost Explorer / Compute Optimizer reads, and
-**explicitly denies every other action** — so even a bug cannot mutate. No write permissions are
-requested.
+A least-privilege, read-only policy is in `iam/finops-readonly-policy.json`. It grants only the
+specific describe/get/list actions the collectors actually call (EC2, ELB, S3 listing, CloudWatch
+`GetMetricStatistics`, STS `GetCallerIdentity`) plus Cost Explorer / Compute Optimizer reads, and
+adds an explicit `Deny` on anything outside that read set. The policy grants **no** write action,
+so for a principal using it, a bug in this code has nothing to call — the read-only property is a
+property of the granted credentials, not a claim about the code. (This is an identity policy; it
+does not override SCPs or resource-based policies that grant writes elsewhere.)
 
 ## Privacy
 

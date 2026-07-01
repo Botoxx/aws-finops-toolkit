@@ -1,8 +1,8 @@
 """Privacy gate: replace account IDs, ARNs and resource IDs with opaque tokens before any
 text leaves for the Anthropic API, and rehydrate the tokens locally in the final report.
 
-'Credentials never leave your machine' (the MCP claim) is about credentials, not the cost
-*data* you then put in a prompt — that still goes to the API. This module redacts that data."""
+This is about the cost *data* placed in a prompt, not credentials: credentials never leave the
+machine regardless, but the findings you narrate do go to the API. This module redacts that data."""
 
 from __future__ import annotations
 
