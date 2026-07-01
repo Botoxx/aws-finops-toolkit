@@ -1,4 +1,8 @@
-from finops_toolkit.llm.validate import extract_currency_figures, validate_report
+from finops_toolkit.llm.validate import (
+    extract_currency_figures,
+    extract_foreign_figures,
+    validate_report,
+)
 from finops_toolkit.schema import Recommendation, Report
 
 
@@ -11,8 +15,10 @@ def _report(findings, summary="", recs=None):
 
 
 def test_extract_handles_currency_formats():
-    text = "We found €47, then 18.40€, plus EUR 410.00 and a total of €1,840.50 ($16.20 too)."
-    assert extract_currency_figures(text) == [47.0, 18.4, 410.0, 1840.5, 16.2]
+    # euro figures (symbol, suffix, EUR code, word form) are extracted; the $ figure is not a euro
+    text = "We found €47, then 18.40€, plus EUR 410.00, 47 euros, and a total of €1,840.50 ($16.20 too)."
+    assert extract_currency_figures(text) == [47.0, 18.4, 410.0, 47.0, 1840.5]
+    assert extract_foreign_figures(text) == [16.2]
 
 
 def test_extract_ignores_non_currency_numbers():
