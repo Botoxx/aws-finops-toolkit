@@ -48,16 +48,21 @@ def collect(session: boto3.Session, region: str, account_id: str) -> list[Detect
         "SavingsPlansPurchaseRecommendationSummary", {}
     )
     amount = summary.get("EstimatedMonthlySavingsAmount")
-    if amount is None:
+    if amount in (None, ""):
         # CE returned 200 but no usable summary — insufficient lookback, no eligible compute yet,
-        # or a warming-up recommendation. That is a coverage gap, NOT a confirmed zero: surface it
-        # so an unassessed largest-lever never reads as "coverage already optimal".
+        # or a warming-up recommendation (the amount is absent or an empty string, NOT "0"). That is
+        # a coverage gap, NOT a confirmed zero: surface it so an unassessed largest-lever never reads
+        # as "coverage already optimal".
         return [_gap(account_id, "Cost Explorer returned no Savings Plans purchase recommendation "
                      "(insufficient lookback history or no eligible steady-state compute); commitment "
                      "coverage was NOT assessed. Re-run after ~30 days of usage.")]
-    est = float(amount or 0)
+    try:
+        est = float(amount)  # CE returns the figure as a numeric string
+    except (TypeError, ValueError):
+        return [_gap(account_id, "Cost Explorer returned a non-numeric Savings Plans estimate; "
+                     "commitment coverage was NOT assessed.")]
     if est <= 0:
-        return []  # present and zero: CE assessed and found no commitment gap
+        return []  # present and genuinely zero: CE assessed and found no commitment gap
 
     pct = summary.get("EstimatedSavingsPercentage")
     cov_note = f" CE estimates ~{pct}% saving vs current on-demand compute." if pct else ""

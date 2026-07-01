@@ -76,6 +76,25 @@ def test_commitment_gap_when_summary_absent():
     assert dets[0].confidence.value == "low"
 
 
+def test_commitment_gap_when_estimate_is_empty_string():
+    # CE frequently returns the summary present with an empty-string amount ("" not "0") for the
+    # warming-up / nothing-eligible case — that must be a gap, not collapse to a confirmed zero.
+    ce = _client("ce")
+    stub = Stubber(ce)
+    stub.add_response(
+        "get_savings_plans_purchase_recommendation",
+        {
+            "SavingsPlansPurchaseRecommendation": {
+                "SavingsPlansPurchaseRecommendationSummary": {"EstimatedMonthlySavingsAmount": ""}
+            }
+        },
+    )
+    stub.activate()
+    dets = commitment.collect(_FakeSession(ce), "eu-west-1", "111122223333")
+    assert len(dets) == 1
+    assert dets[0].check == "collector-error"
+
+
 def test_commitment_advisory_on_ce_error():
     # CE permission/throttle error must surface as a visible gap, not vanish as "no opportunity"
     ce = _client("ce")
