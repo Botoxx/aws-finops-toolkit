@@ -77,6 +77,74 @@ class _HClient:
         self.messages = _HallucinatingMessages(clean_after)
 
 
+class _OpusMessages:
+    """Sonnet report (tool_use) echoes the redacted payload; the Opus summary call (no tools)
+    returns `opus_summary` as text — clean or hallucinated, per the test."""
+
+    def __init__(self, opus_summary):
+        self.opus_summary = opus_summary
+
+    def create(self, **kwargs):
+        if kwargs.get("tool_choice"):
+            payload = json.loads(kwargs["messages"][0]["content"].split("Findings:\n", 1)[1])
+            total = payload["total_monthly_savings_eur"]
+            f0 = payload["findings"][0]
+            report_input = {
+                "executive_summary": f"Sonnet summary: €{total} total.",
+                "total_monthly_savings_eur": total,
+                "recommendations": [
+                    {
+                        "finding_id": f0["id"],
+                        "headline": f0["title"],
+                        "rationale": f"This saves €{f0['monthly_savings_eur']} per month.",
+                        "action": f"Action on resource {f0['resource_id']}.",
+                    }
+                ],
+            }
+            block = SimpleNamespace(type="tool_use", name="emit_report", input=report_input)
+            return SimpleNamespace(content=[block])
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=self.opus_summary)])
+
+
+class _OpusClient:
+    def __init__(self, opus_summary):
+        self.messages = _OpusMessages(opus_summary)
+
+
+class _NoToolClient:
+    """Model never emits a tool_use block (refusal / truncation) — report generation must degrade."""
+
+    def __init__(self):
+        self.messages = self
+
+    def create(self, **kwargs):
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text="I cannot help.")])
+
+
+def test_opus_summary_adopted_when_it_passes_the_gate(findings):
+    result = generate_secure_report(findings, client=_OpusClient("All findings are safe quick wins."), use_opus_summary=True)
+    assert result.report is not None
+    assert result.opus_summary_rejected is False
+    assert result.report.executive_summary == "All findings are safe quick wins."  # Opus text adopted
+
+
+def test_opus_summary_rejected_is_surfaced_not_silent(findings):
+    # the Opus summary invents a figure -> gate rejects it -> Sonnet summary kept, and the caller is told
+    result = generate_secure_report(findings, client=_OpusClient("This saves €424242 per month."), use_opus_summary=True)
+    assert result.report is not None
+    assert result.opus_summary_rejected is True
+    assert result.report.executive_summary.startswith("Sonnet summary:")  # not the rejected Opus text
+
+
+def test_pipeline_degrades_when_model_returns_no_tool_use(findings):
+    # a text-only report response raises ReportGenerationError internally; the pipeline must withhold
+    # cleanly (deterministic report), never crash on StopIteration
+    result = generate_secure_report(findings, client=_NoToolClient())
+    assert result.report is None
+    assert result.violations
+    assert result.attempts == 3
+
+
 def test_pipeline_fails_closed_when_gate_cannot_clear(findings):
     # gate never clears -> narrative withheld (no prose with rejected figures ships), violations surfaced
     result = generate_secure_report(findings, client=_HClient())

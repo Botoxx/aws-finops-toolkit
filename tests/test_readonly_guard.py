@@ -38,9 +38,16 @@ def test_collectors_issue_only_readonly_calls(session, monkeypatch):
     acct = "111122223333"
     # include commitment + rightsizing: they hit CE / Compute Optimizer (mutating-capable services),
     # so the read-only sweep must cover them too — they degrade to a Get + advisory under moto.
+    per_collector: dict[str, int] = {}
     for mod in (ebs, networking, snapshots, amis, s3, commitment, rightsizing):
+        before = len(calls)
         mod.collect(session, REGION, acct)
+        per_collector[mod.__name__.rsplit(".", 1)[-1]] = len(calls) - before
 
     assert calls, "expected the collectors to make AWS calls"
     offenders = [c for c in calls if not c.startswith(READONLY_PREFIXES)]
     assert offenders == [], f"non-read-only operations issued: {sorted(set(offenders))}"
+    # every collector must actually issue at least one recorded op — a collector that early-returns
+    # before calling AWS would contribute nothing and silently read as "safe" in the aggregate.
+    silent = [name for name, n in per_collector.items() if n == 0]
+    assert silent == [], f"collectors issued no AWS calls (auditing nothing): {silent}"

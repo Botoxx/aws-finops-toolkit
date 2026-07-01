@@ -72,6 +72,33 @@ def test_gate_flags_near_miss_outside_tolerance(findings):
     assert validate_report(_report(findings, recs=[exact]), findings) == []
 
 
+def test_gate_rejects_foreign_currency_even_when_value_is_real(findings):
+    # $47 borrows a real euro value but the report is EUR-only — wrong currency is always a violation
+    rec = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves $47 per month.", action="a",
+    )
+    assert [v.figure for v in validate_report(_report(findings, recs=[rec]), findings)] == [47.0]
+
+
+def test_gate_flags_word_form_hallucination(findings):
+    # a fabricated figure written in words ("999 euros") must be caught, not just "€999"
+    rec = Recommendation(
+        finding_id="ebs-unattached-001", headline="h",
+        rationale="This saves 999 euros per month.", action="a",
+    )
+    assert [v.figure for v in validate_report(_report(findings, recs=[rec]), findings)] == [999.0]
+
+
+def test_gate_flags_dangling_finding_id(findings):
+    # a recommendation citing only real figures but bound to a non-existent finding is still rejected
+    rec = Recommendation(
+        finding_id="does-not-exist", headline="h", rationale="This saves €47 per month.", action="a",
+    )
+    violations = validate_report(_report(findings, recs=[rec]), findings)
+    assert any("does-not-exist" in v.snippet for v in violations)
+
+
 def test_ranged_savings_bounds_are_allowed(findings):
     # snapshot finding exposes low/high bounds; citing them must not trip the gate
     rec = Recommendation(

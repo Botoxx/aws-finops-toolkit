@@ -51,9 +51,13 @@ def test_flat_rate_charges():
     alb = savings.price_detection(
         _det("elb-idle", {"hours": 730, "lb_type": "application"}, category="networking")
     )
+    nlb = savings.price_detection(
+        _det("elb-idle", {"hours": 730, "lb_type": "network"}, category="networking")
+    )
     assert eip.monthly_savings_eur == 3.65
     assert nat.monthly_savings_eur == 35.04
     assert alb.monthly_savings_eur == 18.4
+    assert nlb.monthly_savings_eur == round(730 * pricing.NLB_HOUR, 2)  # 19.71, not the ALB rate
 
 
 def test_s3_mpu_is_unquantified_hygiene_fix():

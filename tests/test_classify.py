@@ -14,6 +14,18 @@ class _FakeClient:
         return SimpleNamespace(content=[block])
 
 
+def test_classify_degrades_to_empty_on_text_only_response(findings):
+    # optional pass: a text-only / truncated model reply must degrade to no labels, never StopIteration
+    class _NoToolClient:
+        def __init__(self):
+            self.messages = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="hi")])
+
+    assert classify_findings(findings[:2], client=_NoToolClient()) == {}
+
+
 def test_classify_returns_id_to_severity_map(findings):
     labels = [{"id": f.id, "severity": "high"} for f in findings[:2]]
     client = _FakeClient(labels)

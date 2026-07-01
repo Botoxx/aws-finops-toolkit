@@ -30,6 +30,21 @@ def test_assert_no_leak_does_not_false_positive_on_short_ids():
     assert '"resource_id": "ec2"' not in blob and '"resource_id": "elastic"' not in blob
 
 
+def test_leak_check_scans_shipped_payload_not_just_redacted_fields(monkeypatch):
+    # simulate a text field wired into collectors but forgotten in _REDACTED_FIELDS: `evidence`
+    # ships raw. The leak check scans the whole shipped payload, so it must still catch the leak.
+    from finops_toolkit import redaction
+
+    monkeypatch.setattr(
+        redaction, "_REDACTED_FIELDS", ("id", "resource_id", "resource_arn", "title", "confidence_reason")
+    )
+    r = redaction.Redactor()
+    secret = "vol-0a1b2c3d4e5f60011"
+    f = _finding(resource_id=secret, evidence=f"delete {secret} now")
+    with pytest.raises(RuntimeError, match="redaction leak"):
+        r.redact_findings([f])
+
+
 def test_assert_no_leak_raises_when_a_secret_survives():
     r = Redactor()
     secret = "arn:aws:ec2:eu-west-1:111122223333:volume/vol-0a1b2c3d4e5f60011"

@@ -44,8 +44,7 @@ def test_generate_report_parses_and_owns_total(findings):
     assert isinstance(report, Report)
     assert report.total_monthly_savings_eur == expected_total  # code owns it, not 9999.99
 
-    # the forced tool-call wiring is correct
+    # the forced tool-call wiring is correct (model id is a config constant, not behavior — not asserted)
     cap = client.messages.captured
-    assert cap["model"] == "claude-sonnet-4-6"
     assert cap["tool_choice"] == {"type": "tool", "name": "emit_report"}
     assert cap["tools"][0]["input_schema"]["title"] == "Report"

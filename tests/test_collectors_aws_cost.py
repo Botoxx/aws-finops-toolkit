@@ -63,6 +63,19 @@ def test_commitment_silent_when_no_recommendation():
     assert commitment.collect(_FakeSession(ce), "eu-west-1", "111122223333") == []
 
 
+def test_commitment_gap_when_summary_absent():
+    # CE returns 200 but no usable summary (insufficient lookback / warming up). That is a coverage
+    # gap, NOT a confirmed zero — it must surface, not collapse to "coverage already optimal".
+    ce = _client("ce")
+    stub = Stubber(ce)
+    stub.add_response("get_savings_plans_purchase_recommendation", {"SavingsPlansPurchaseRecommendation": {}})
+    stub.activate()
+    dets = commitment.collect(_FakeSession(ce), "eu-west-1", "111122223333")
+    assert len(dets) == 1
+    assert dets[0].check == "collector-error"
+    assert dets[0].confidence.value == "low"
+
+
 def test_commitment_advisory_on_ce_error():
     # CE permission/throttle error must surface as a visible gap, not vanish as "no opportunity"
     ce = _client("ce")
@@ -108,6 +121,32 @@ def test_rightsizing_advisory_when_not_opted_in():
     stub.activate()
     dets = rightsizing.collect(_FakeSession(co), "eu-west-1", "111122223333")
     assert len(dets) == 1
-    assert dets[0].check == "rightsizing"
+    assert dets[0].id == "rightsizing-enable-compute-optimizer"
     assert dets[0].pricing["monthly_savings_eur"] == 0.0
     assert dets[0].confidence.value == "low"
+
+
+def test_rightsizing_distinguishes_enabled_but_no_actionable():
+    # Compute Optimizer IS enabled and returned a non-actionable finding — a clean result, so we
+    # must not tell the customer to enable a service that is already on.
+    co = _client("compute-optimizer", region="eu-west-1")
+    stub = Stubber(co)
+    stub.add_response(
+        "get_ec2_instance_recommendations",
+        {
+            "instanceRecommendations": [
+                {
+                    "instanceArn": "arn:aws:ec2:eu-west-1:111122223333:instance/i-0clean",
+                    "finding": "OPTIMIZED",
+                    "recommendationOptions": [
+                        {"savingsOpportunity": {"estimatedMonthlySavings": {"value": 0.0}}}
+                    ],
+                }
+            ]
+        },
+    )
+    stub.activate()
+    dets = rightsizing.collect(_FakeSession(co), "eu-west-1", "111122223333")
+    assert len(dets) == 1
+    assert dets[0].id == "rightsizing-none-actionable"
+    assert "No rightsizing" in dets[0].title

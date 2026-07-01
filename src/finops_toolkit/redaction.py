@@ -6,6 +6,7 @@ machine regardless, but the findings you narrate do go to the API. This module r
 
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
 
@@ -23,6 +24,16 @@ _PATTERNS: list[tuple[str, re.Pattern]] = [
 ]
 
 _REDACTED_FIELDS = ("id", "resource_id", "resource_arn", "title", "evidence", "confidence_reason")
+
+# Fields that are enums / service names / regions / numbers — never redacted, and allowed to share
+# a substring with a short id (a bucket named 'ec2' vs service 'ec2'). Everything NOT listed here is
+# free text that must be redacted; the leak check scans exactly that complement of the shipped
+# payload, so a new text field wired into collectors but forgotten in _REDACTED_FIELDS is still
+# caught rather than silently shipped raw.
+_STRUCTURAL_FIELDS = frozenset(
+    {"check", "service", "category", "region", "effort", "risk", "confidence", "auto_applyable",
+     "monthly_savings_eur", "savings_low_eur", "savings_high_eur"}
+)
 
 
 class Redactor:
@@ -78,14 +89,14 @@ class Redactor:
         return redacted
 
     def assert_no_leak(self, originals: list[Finding], redacted: list[Finding]) -> None:
-        """Fail closed: verify no finding's resource_id/resource_arn survived into a field that gets
-        sent to the model. Scanned over the redacted text fields only — structural fields (service,
-        region, check, enums) are never redacted and may legitimately share a substring with a short
-        id (e.g. a bucket named 'ec2' vs service 'ec2'), so including them would false-positive."""
+        """Fail closed: verify no finding's resource_id/resource_arn survived into the payload that
+        gets sent to the model. Scans the whole shipped model_dump minus the structural fields —
+        so it tracks what is *actually* sent, not just the fields we remembered to redact. Structural
+        fields are excluded because they are never redacted and may legitimately share a substring
+        with a short id (a bucket named 'ec2' vs service 'ec2'), which would otherwise false-positive."""
         shipped = "\n".join(
-            text
+            json.dumps({k: v for k, v in f.model_dump(mode="json").items() if k not in _STRUCTURAL_FIELDS})
             for f in redacted
-            for text in (*(getattr(f, fld) or "" for fld in _REDACTED_FIELDS), *f.caveats)
         )
         for f in originals:
             for secret in (f.resource_id, f.resource_arn):
