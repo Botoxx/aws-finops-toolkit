@@ -89,9 +89,13 @@ def _nat_gateways(session: boto3.Session, region: str, days: int) -> list[Detect
                     evidence=f"BytesOutToDestination ~0 over {days} days; hourly charge still incurred.",
                     effort=Effort.low,
                     risk=Risk.caution,
-                    confidence=Confidence.high,
-                    confidence_reason=f"No traffic observed over {days} days (standard CloudWatch metric).",
-                    caveats=["Confirm no failover/standby role before removal."],
+                    confidence=Confidence.medium,
+                    confidence_reason=f"Zero BytesOutToDestination over {days} days (CloudWatch); medium "
+                    f"because a gateway younger than the window, or in a standby/failover role, can read as idle.",
+                    caveats=[
+                        "Confirm no failover/standby role before removal.",
+                        f"A NAT gateway younger than {days} days has little history and may be flagged idle prematurely.",
+                    ],
                     pricing={"hours": 730},
                 )
             )
@@ -110,7 +114,9 @@ def _load_balancers(session: boto3.Session, region: str, days: int) -> list[Dete
             namespace = {"application": "AWS/ApplicationELB", "network": "AWS/NetworkELB"}.get(
                 lb_type, "AWS/ApplicationELB"
             )
-            metric = "RequestCount" if lb_type == "application" else "ActiveFlowCount"
+            # ProcessedBytes is a true counter for NLB (ActiveFlowCount is a sampled gauge, invalid
+            # to Sum over daily periods); ALB uses RequestCount, which emits nothing at zero requests.
+            metric = "RequestCount" if lb_type == "application" else "ProcessedBytes"
             # LoadBalancer dimension value = the trailing app/.. or net/.. portion of the ARN
             dim = arn.split(":loadbalancer/")[-1]
             try:
@@ -136,8 +142,13 @@ def _load_balancers(session: boto3.Session, region: str, days: int) -> list[Dete
                     evidence=f"No traffic over {days} days; hourly LCU baseline still billed.",
                     effort=Effort.low,
                     risk=Risk.caution,
-                    confidence=Confidence.high,
-                    confidence_reason=f"Zero {metric} over {days} days (standard CloudWatch metric).",
+                    confidence=Confidence.medium,
+                    confidence_reason=f"Zero {metric} over {days} days (CloudWatch); medium because a "
+                    f"load balancer younger than the window can read as idle.",
+                    caveats=[
+                        f"A load balancer younger than {days} days may be flagged idle prematurely; "
+                        "confirm it is not newly provisioned.",
+                    ],
                     pricing={"hours": 730, "lb_type": lb_type},
                 )
             )
