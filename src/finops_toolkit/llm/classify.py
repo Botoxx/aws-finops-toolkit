@@ -51,5 +51,7 @@ def classify_findings(findings: list[Finding], *, client=None) -> dict[str, str]
         tool_choice={"type": "tool", "name": "emit_labels"},
         messages=[{"role": "user", "content": json.dumps(slim)}],
     )
-    block = next(b for b in msg.content if b.type == "tool_use")
+    block = next((b for b in msg.content if b.type == "tool_use"), None)
+    if block is None or "labels" not in getattr(block, "input", {}):
+        return {}  # optional pass: a malformed/text-only response degrades to no labels, never raises
     return {item["id"]: item["severity"] for item in block.input["labels"]}

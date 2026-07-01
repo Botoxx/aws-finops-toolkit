@@ -5,10 +5,31 @@ from __future__ import annotations
 
 import boto3
 
-from ..schema import Confidence, Detection, Effort, Risk
+from ..schema import Category, Confidence, Detection, Effort, Risk
 from .metrics import metric_sum
 
 IDLE_WINDOW_DAYS = 30
+
+
+def _gap(area: str, resource_id: str, region: str, err: Exception) -> Detection:
+    """A networking sub-check (or a single resource's metric query) failed. Emit a visible gap
+    rather than letting the exception discard findings already gathered in this region — a
+    CloudWatch throttle on one resource must not read as 'no idle networking here'."""
+    return Detection(
+        id=f"collector-error-networking-{area}-{region}-{resource_id}",
+        check="collector-error",
+        service="ec2",
+        category=Category.networking,
+        title=f"Could not fully assess {area} in {region}",
+        resource_id=resource_id,
+        region=region,
+        evidence=f"{area} assessment failed ({type(err).__name__}); this was NOT fully assessed.",
+        effort=Effort.trivial,
+        risk=Risk.safe,
+        confidence=Confidence.low,
+        confidence_reason="Coverage gap, not a finding.",
+        pricing={"monthly_savings_eur": 0.0},
+    )
 
 
 def _eips(session: boto3.Session, region: str) -> list[Detection]:
@@ -46,10 +67,14 @@ def _nat_gateways(session: boto3.Session, region: str, days: int) -> list[Detect
             if nat.get("State") != "available":
                 continue
             nat_id = nat["NatGatewayId"]
-            traffic = metric_sum(
-                session, region, "AWS/NATGateway", "BytesOutToDestination",
-                [{"Name": "NatGatewayId", "Value": nat_id}], days=days,
-            )
+            try:
+                traffic = metric_sum(
+                    session, region, "AWS/NATGateway", "BytesOutToDestination",
+                    [{"Name": "NatGatewayId", "Value": nat_id}], days=days,
+                )
+            except Exception as e:  # a per-resource throttle must not drop the NATs already found
+                out.append(_gap("nat-gateway", nat_id, region, e))
+                continue
             if traffic > 0:
                 continue
             out.append(
@@ -88,10 +113,14 @@ def _load_balancers(session: boto3.Session, region: str, days: int) -> list[Dete
             metric = "RequestCount" if lb_type == "application" else "ActiveFlowCount"
             # LoadBalancer dimension value = the trailing app/.. or net/.. portion of the ARN
             dim = arn.split(":loadbalancer/")[-1]
-            requests = metric_sum(
-                session, region, namespace, metric,
-                [{"Name": "LoadBalancer", "Value": dim}], days=days,
-            )
+            try:
+                requests = metric_sum(
+                    session, region, namespace, metric,
+                    [{"Name": "LoadBalancer", "Value": dim}], days=days,
+                )
+            except Exception as e:  # a per-resource throttle must not drop the LBs already found
+                out.append(_gap("load-balancer", lb["LoadBalancerName"], region, e))
+                continue
             if requests > 0:
                 continue
             out.append(
@@ -116,4 +145,16 @@ def _load_balancers(session: boto3.Session, region: str, days: int) -> list[Dete
 
 
 def collect(session: boto3.Session, region: str, account_id: str, days: int = IDLE_WINDOW_DAYS) -> list[Detection]:
-    return _eips(session, region) + _nat_gateways(session, region, days) + _load_balancers(session, region, days)
+    # Each sub-check is isolated: a failure in one (e.g. a throttled paginator) emits a gap for
+    # that area while the findings from the others are preserved, rather than losing the region.
+    out: list[Detection] = []
+    for area, fn in (
+        ("elastic-ip", lambda: _eips(session, region)),
+        ("nat-gateway", lambda: _nat_gateways(session, region, days)),
+        ("load-balancer", lambda: _load_balancers(session, region, days)),
+    ):
+        try:
+            out += fn()
+        except Exception as e:
+            out.append(_gap(area, f"{area}-{region}", region, e))
+    return out

@@ -11,6 +11,11 @@ from .validate import Violation, validate_report
 
 MODEL = "claude-sonnet-4-6"
 
+
+class ReportGenerationError(RuntimeError):
+    """The model returned no usable report tool_use block (text-only reply, refusal, or a
+    max_tokens truncation before the tool call). Treated as a failed attempt, never a crash."""
+
 SYSTEM = """You are a senior AWS FinOps consultant writing a client-ready cost-audit report.
 You receive findings as JSON; each finding carries a code-computed euro saving.
 
@@ -55,7 +60,9 @@ def generate_report(findings: list[Finding], *, client=None) -> Report:
         tool_choice={"type": "tool", "name": "emit_report"},
         messages=[{"role": "user", "content": "Findings:\n" + json.dumps(payload, indent=2)}],
     )
-    block = next(b for b in msg.content if b.type == "tool_use")
+    block = next((b for b in msg.content if b.type == "tool_use"), None)
+    if block is None:
+        raise ReportGenerationError("model returned no emit_report tool_use block")
     report = Report.model_validate(block.input)
     report.total_monthly_savings_eur = total  # code owns the total, not the model
     return report
@@ -63,15 +70,20 @@ def generate_report(findings: list[Finding], *, client=None) -> Report:
 
 def generate_validated_report(
     findings: list[Finding], *, client=None, max_attempts: int = 3
-) -> tuple[Report, int, list[Violation]]:
-    """Regenerate until the numeric gate passes or attempts exhaust.
-    Returns (report, attempts_used, final_violations)."""
-    last: tuple[Report, list[Violation]] | None = None
+) -> tuple[Report | None, int, list[Violation]]:
+    """Regenerate until the numeric gate passes or attempts exhaust. Returns
+    (report, attempts_used, final_violations). On exhaustion the report may be None (generation
+    itself failed) or a report that still has violations — either way violations is non-empty, so
+    the caller withholds the narrative. A clean pass returns a real report with no violations."""
+    report: Report | None = None
+    violations: list[Violation] = []
     for attempt in range(1, max_attempts + 1):
-        report = generate_report(findings, client=client)
+        try:
+            report = generate_report(findings, client=client)
+        except ReportGenerationError as e:
+            report, violations = None, [Violation(0.0, f"report generation failed: {e}")]
+            continue
         violations = validate_report(report, findings)
         if not violations:
             return report, attempt, []
-        last = (report, violations)
-    assert last is not None
-    return last[0], max_attempts, last[1]
+    return report, max_attempts, violations

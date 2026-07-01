@@ -17,6 +17,8 @@ class SecureReport(NamedTuple):
     report: Report | None  # None when the gate exhausted retries — narrative is withheld
     attempts: int
     violations: list[Violation]  # empty unless the gate exhausted its retries
+    opus_summary_rejected: bool = False  # True when a requested Opus summary failed the gate and
+    # was dropped in favour of the Sonnet summary — the caller can surface that it did not take effect
 
 
 def generate_secure_report(
@@ -38,12 +40,17 @@ def generate_secure_report(
         # that still contains rejected figures — the caller falls back to the deterministic report.
         return SecureReport(None, attempts, violations)
 
+    opus_summary_rejected = False
     if use_opus_summary:
         total = report.total_monthly_savings_eur
         summary = executive_summary(redacted, total, client=client)
         candidate = report.model_copy(update={"executive_summary": summary})
         if not validate_report(candidate, redacted):  # only adopt if it passes the gate
             report = candidate
+        else:
+            # the Opus summary tripped the gate — keep the validated Sonnet summary and say so,
+            # rather than silently returning Sonnet prose as though Opus had been adopted
+            opus_summary_rejected = True
 
     report = redactor.rehydrate_report(report)
-    return SecureReport(report, attempts, violations)
+    return SecureReport(report, attempts, violations, opus_summary_rejected)

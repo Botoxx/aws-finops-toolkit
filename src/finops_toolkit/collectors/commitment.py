@@ -11,9 +11,9 @@ import boto3
 from ..schema import Category, Confidence, Detection, Effort, Risk
 
 
-def _unavailable(account_id: str, err: Exception) -> Detection:
-    """CE could not be queried (often missing ce: permissions). Surface a gap, not silence —
-    a hidden commitment lever is the single largest saving we could be failing to report."""
+def _gap(account_id: str, evidence: str) -> Detection:
+    """Surface a coverage gap, not silence — a hidden commitment lever is the single largest
+    saving we could be failing to report, so 'we could not assess' must never read as 'no gap'."""
     return Detection(
         id="commitment-coverage-unknown",
         check="collector-error",
@@ -22,12 +22,11 @@ def _unavailable(account_id: str, err: Exception) -> Detection:
         title="Savings Plans recommendation unavailable",
         resource_id=f"account-{account_id}",
         region="global",
-        evidence=f"Cost Explorer SP recommendation could not be retrieved ({type(err).__name__}); "
-        "commitment coverage was NOT assessed (check ce: permissions).",
+        evidence=evidence,
         effort=Effort.trivial,
         risk=Risk.safe,
         confidence=Confidence.low,
-        confidence_reason="CE query error — a coverage gap, not a finding.",
+        confidence_reason="CE coverage gap, not a finding.",
         pricing={"monthly_savings_eur": 0.0},
     )
 
@@ -42,14 +41,23 @@ def collect(session: boto3.Session, region: str, account_id: str) -> list[Detect
             LookbackPeriodInDays="THIRTY_DAYS",
         )
     except Exception as e:
-        return [_unavailable(account_id, e)]
+        return [_gap(account_id, f"Cost Explorer SP recommendation could not be retrieved "
+                     f"({type(e).__name__}); commitment coverage was NOT assessed (check ce: permissions).")]
 
     summary = resp.get("SavingsPlansPurchaseRecommendation", {}).get(
         "SavingsPlansPurchaseRecommendationSummary", {}
     )
-    est = float(summary.get("EstimatedMonthlySavingsAmount") or 0)
+    amount = summary.get("EstimatedMonthlySavingsAmount")
+    if amount is None:
+        # CE returned 200 but no usable summary — insufficient lookback, no eligible compute yet,
+        # or a warming-up recommendation. That is a coverage gap, NOT a confirmed zero: surface it
+        # so an unassessed largest-lever never reads as "coverage already optimal".
+        return [_gap(account_id, "Cost Explorer returned no Savings Plans purchase recommendation "
+                     "(insufficient lookback history or no eligible steady-state compute); commitment "
+                     "coverage was NOT assessed. Re-run after ~30 days of usage.")]
+    est = float(amount or 0)
     if est <= 0:
-        return []
+        return []  # present and zero: CE assessed and found no commitment gap
 
     pct = summary.get("EstimatedSavingsPercentage")
     cov_note = f" CE estimates ~{pct}% saving vs current on-demand compute." if pct else ""
